@@ -1,2 +1,2 @@
-# swiftui-coredata-fetchrequest-redesign
-SwiftUI CoreData FetchRequest Redesign
+# SwiftUI CoreData @FetchRequest Redesign
+SwiftUI CoreData @FetchRequest Redesign
