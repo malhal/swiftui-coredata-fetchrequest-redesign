@@ -8,29 +8,56 @@
 import SwiftUI
 import CoreData
 
-struct FetchMonitor<ResultType, Content>: View where ResultType : NSManagedObject, Content: View {
+
+
+struct FetchMonitor<ResultType, Content, NSSortDescriptorsIDType, PredicateIDType>: View where ResultType: NSManagedObject, Content: View, NSSortDescriptorsIDType: Equatable, PredicateIDType: Equatable {
     @Environment(\.managedObjectContext) private var viewContext
     
     @StateObject private var fetchedResultsDelegate = FetchedResultsDelegate<ResultType>()
-    let sortDescriptors: [SortDescriptor<ResultType>]
-    let content: (FetchPhase<ResultType>) -> Content
     
-    init(sortDescriptors: [SortDescriptor<ResultType>], @ViewBuilder content: @escaping (FetchPhase<ResultType>) -> Content) {
-        self.sortDescriptors = sortDescriptors
+    let nsSortDescriptorsID: NSSortDescriptorsIDType
+    let predicateID: PredicateIDType
+    @ViewBuilder let content: (FetchPhase<ResultType>) -> Content
+    let nsSortDescriptors: () -> ([NSSortDescriptor])
+    let predicate: (() -> NSPredicate)?
+    
+    init(nsSortDescriptorsID: NSSortDescriptorsIDType, predicateID: PredicateIDType, @ViewBuilder content: @escaping (FetchPhase<ResultType>) -> Content, nsSortDescriptors: @escaping () -> [NSSortDescriptor], predicate: (() -> (NSPredicate))? = nil) {
+        self.nsSortDescriptorsID = nsSortDescriptorsID
+        self.nsSortDescriptors = nsSortDescriptors
+        self.predicateID = predicateID
+        self.predicate = predicate
         self.content = content
+    }
+    
+    init(nsSortDescriptorsID: NSSortDescriptorsIDType, @ViewBuilder content: @escaping (FetchPhase<ResultType>) -> Content, nsSortDescriptors: @escaping () -> [NSSortDescriptor], predicate: (() -> (NSPredicate))? = nil) where PredicateIDType == Int {
+        self.init(nsSortDescriptorsID: nsSortDescriptorsID, predicateID: 0, content: content, nsSortDescriptors: nsSortDescriptors, predicate: predicate)
+    }
+    
+    init(@ViewBuilder content: @escaping (FetchPhase<ResultType>) -> Content, nsSortDescriptors: @escaping () -> [NSSortDescriptor], predicate: (() -> (NSPredicate))? = nil) where PredicateIDType == Int, NSSortDescriptorsIDType == Int {
+        self.init(nsSortDescriptorsID: 0, predicateID: 0, content: content, nsSortDescriptors: nsSortDescriptors, predicate: predicate)
+    }
+    
+    
+    // Swift SortDescriptor support
+    init(sortDescriptors: [SortDescriptor<ResultType>], predicateID: PredicateIDType, @ViewBuilder content: @escaping (FetchPhase<ResultType>) -> Content, predicate: (() -> (NSPredicate))? = nil) where NSSortDescriptorsIDType == [SortDescriptor<ResultType>] {
+        let nsSortDescriptors = {
+            sortDescriptors.map { sd in
+                NSSortDescriptor(sd)
+            }
+        }
+        self.init(nsSortDescriptorsID: sortDescriptors, predicateID: predicateID, content: content, nsSortDescriptors: nsSortDescriptors, predicate: predicate)
+    }
+    
+    init(sortDescriptors: [SortDescriptor<ResultType>], @ViewBuilder content: @escaping (FetchPhase<ResultType>) -> Content, predicate: (() -> (NSPredicate))? = nil) where PredicateIDType == Int, NSSortDescriptorsIDType == [SortDescriptor<ResultType>] {
+        self.init(sortDescriptors: sortDescriptors, predicateID: 0, content: content, predicate: predicate)
     }
     
     func newfetchedResultsController() -> NSFetchedResultsController<ResultType>? {
         let fr = NSFetchRequest<ResultType>(entityName: "\(ResultType.self)")
-        fr.sortDescriptors = nsSortDescriptors
+        fr.sortDescriptors = nsSortDescriptors()
+        fr.predicate = predicate?()
         let frc = NSFetchedResultsController<ResultType>(fetchRequest:fr, managedObjectContext: viewContext, sectionNameKeyPath: nil, cacheName: nil)
         return frc
-    }
-    
-    var nsSortDescriptors: [NSSortDescriptor] {
-        sortDescriptors.map { sd in
-            NSSortDescriptor(sd)
-        }
     }
     
     var body: some View {
@@ -38,8 +65,12 @@ struct FetchMonitor<ResultType, Content>: View where ResultType : NSManagedObjec
             .onChange(of: viewContext, initial: true) {
                 fetchedResultsDelegate.fetchedResultsController = newfetchedResultsController()
             }
-            .onChange(of: sortDescriptors) {
-                fetchedResultsDelegate.fetchedResultsController?.fetchRequest.sortDescriptors = nsSortDescriptors
+            .onChange(of: nsSortDescriptorsID) {
+                fetchedResultsDelegate.fetchedResultsController?.fetchRequest.sortDescriptors = nsSortDescriptors()
+                fetchedResultsDelegate.refetch()
+            }
+            .onChange(of: predicateID) {
+                fetchedResultsDelegate.fetchedResultsController?.fetchRequest.predicate = predicate?()
                 fetchedResultsDelegate.refetch()
             }
     }
@@ -57,8 +88,8 @@ private class FetchedResultsDelegate<ResultType>: NSObject, NSFetchedResultsCont
     }
     
     func refetch(){
+        var fetchPhase = FetchPhase<ResultType>.empty
         if let frc = fetchedResultsController {
-            let fetchPhase: FetchPhase<ResultType>
             do {
                 try frc.performFetch()
                 fetchPhase = .updated(frc.fetchedObjects ?? [])
@@ -66,9 +97,9 @@ private class FetchedResultsDelegate<ResultType>: NSObject, NSFetchedResultsCont
             catch {
                 fetchPhase = .failure(error)
             }
-            withAnimation {
-                self.fetchPhase = fetchPhase
-            }
+        }
+        withAnimation {
+            self.fetchPhase = fetchPhase
         }
     }
     
