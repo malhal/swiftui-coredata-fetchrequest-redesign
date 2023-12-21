@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreData
 
 struct FetchMonitor<ResultType, Content>: View where ResultType : NSManagedObject, Content: View {
     @Environment(\.managedObjectContext) private var viewContext
