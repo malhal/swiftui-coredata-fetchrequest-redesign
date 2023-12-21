@@ -31,3 +31,31 @@ struct FetchViewRedesign: View {
 As you can see the `sortDescriptors` are a `@State` which is not lost when this `FetchViewRedesign` is re-initialized. They are passed into the monitor and a binding is supplied to the `Table` that it sets when the user clicks on the table headers.
 
 ![Screenshot](/Screenshots/Screenshot%202023-12-20%20at%2011.17.09.png)
+
+What if you would prefer your source of truth for the sort to be a simple boolean instead of a `SortDescriptor`? That can be done with a couple of computed properties as follows:
+
+```
+    @State var ascending = false
+
+    var sortDescriptors: [SortDescriptor<Item>] {
+        [SortDescriptor(\Item.timestamp, order: config.ascending ? .forward : .reverse)]
+    }
+    
+    var sortOrder: Binding<[SortDescriptor<Item>]> {
+        Binding {
+            sortDescriptors
+        } set: { value in
+            ascending = value.first?.order == .forward
+        }
+    }
+	...
+    Button("Toggle sort") {
+        ascending.toggle()
+    }
+	...
+	FetchMonitor(sortDescriptors: sortDescriptors) { phase in
+        if let results = phase.results {
+            Table(results, sortOrder: sortOrder) {
+
+``
+Now you can easily change the boolean to be `@SceneStorage` or `@AppStorage` if you would like it to be persisted.
