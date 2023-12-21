@@ -38,7 +38,7 @@ What if you would prefer your source of truth for the sort to be a simple boolea
     @State var ascending = false
 
     var sortDescriptors: [SortDescriptor<Item>] {
-        [SortDescriptor(\Item.timestamp, order: config.ascending ? .forward : .reverse)]
+        [SortDescriptor(\Item.timestamp, order: ascending ? .forward : .reverse)]
     }
     
     var sortOrder: Binding<[SortDescriptor<Item>]> {
