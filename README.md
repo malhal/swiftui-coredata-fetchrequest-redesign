@@ -57,5 +57,5 @@ What if you would prefer your source of truth for the sort to be a simple boolea
         if let results = phase.results {
             Table(results, sortOrder: sortOrder) {
 
-``
+```
 Now you can easily change the boolean to be `@SceneStorage` or `@AppStorage` if you would like it to be persisted.
