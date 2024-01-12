@@ -8,8 +8,6 @@
 import SwiftUI
 import CoreData
 
-
-
 struct FetchMonitor<ResultType, Content, NSSortDescriptorsIDType, PredicateIDType>: View where ResultType: NSManagedObject, Content: View, NSSortDescriptorsIDType: Equatable, PredicateIDType: Equatable {
     @Environment(\.managedObjectContext) private var viewContext
     
