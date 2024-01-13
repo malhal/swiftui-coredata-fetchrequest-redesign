@@ -9,81 +9,111 @@ import SwiftUI
 import CoreData
 import Combine
 
-struct FetchMonitor<ResultType, Content>: View where ResultType: NSManagedObject, Content: View {
+@propertyWrapper struct FetchRequest2<ResultType>: DynamicProperty where ResultType: NSManagedObject {
     @Environment(\.managedObjectContext) private var viewContext
-    @StateObject private var fetchedResultsDelegate = FetchedResultsDelegate<ResultType>()
-    @ViewBuilder let content: (Result<[ResultType], Error>) -> Content
-    let fetchRequest: NSFetchRequest<ResultType>
+    @StateObject private var fetchResult = FetchResult2<ResultType>()
     
-    init(fetchRequest: NSFetchRequest<ResultType>, @ViewBuilder content: @escaping (Result<[ResultType], Error>) -> Content) {
-        self.content = content
-        self.fetchRequest = fetchRequest
+    public typealias MakeFetchRequestClosure = () -> NSFetchRequest<ResultType>
+    public typealias MakeFetchedResultsControllerClosure = (NSFetchRequest<ResultType>, NSManagedObjectContext) -> NSFetchedResultsController<ResultType>
+    
+    // For making an initial custom fetch request, this will be reused if the frc is re-init because of context change.
+    private let makeFetchRequest: MakeFetchRequestClosure?
+    
+    // For making a fetch controller, this will be called again if context changes. The fetch request supplied is the previous one which might have been updated after it was created.
+    private let makeFetchedResultsController: MakeFetchedResultsControllerClosure?
+    
+    init(makeFetchRequest: MakeFetchRequestClosure? = nil, makeFetchedResultsController: MakeFetchedResultsControllerClosure? = nil) {
+        self.makeFetchRequest = makeFetchRequest
+        self.makeFetchedResultsController = makeFetchedResultsController
     }
     
-    func updateFetchedResultsController() {
-        if fetchedResultsDelegate.fetchedResultsController?.managedObjectContext != viewContext || fetchedResultsDelegate.fetchedResultsController?.fetchRequest != fetchRequest {
-            fetchedResultsDelegate.fetchedResultsController = NSFetchedResultsController<ResultType>(fetchRequest:fetchRequest, managedObjectContext: viewContext, sectionNameKeyPath: nil, cacheName: nil)
+    public var wrappedValue: FetchResult2<ResultType> {
+        get {
+            fetchResult
         }
     }
     
-    var body: some View {
-        let _ = updateFetchedResultsController()
-        content(fetchedResultsDelegate.result)
+    func update() {
+        // if first time or if context has changed
+        if fetchResult.fetchedResultsController?.managedObjectContext != viewContext {
+            // either nil when first time or get previously updated fetch request
+            var fetchRequest = fetchResult.fetchedResultsController?.fetchRequest
+            if fetchRequest == nil {
+                // allow caller to configure initial fetch request
+                fetchRequest = makeFetchRequest?()
+                if fetchRequest == nil {
+                    // create default fetch request
+                    fetchRequest = NSFetchRequest<ResultType>(entityName: "\(ResultType.self)")
+                    fetchRequest?.sortDescriptors = []
+                }
+            }
+            // allow caller to configure a frc with custom section or cache
+            var frc = makeFetchedResultsController?(fetchRequest!, viewContext)
+            if frc == nil {
+                // create default frc with most common options
+                frc = NSFetchedResultsController<ResultType>(fetchRequest:fetchRequest!, managedObjectContext: viewContext, sectionNameKeyPath: nil, cacheName: nil)
+            }
+            fetchResult.fetchedResultsController = frc
+        }
     }
 }
 
-private class FetchedResultsDelegate<ResultType>: NSObject, NSFetchedResultsControllerDelegate, ObservableObject where ResultType : NSManagedObject {
+class FetchResult2<ResultType>: NSObject, NSFetchedResultsControllerDelegate, ObservableObject where ResultType : NSManagedObject {
 
-    var result: Result<[ResultType], Error> = Result.failure(CocoaError.error(.validationMultipleErrors))
-    var managedObjectContext: NSManagedObjectContext?
-    var cancellable: Cancellable?
-
-    static func getResult(frc: NSFetchedResultsController<ResultType>?) -> Result<[ResultType], Error> {
-        var result: Result<[ResultType], Error> = .failure(CocoaError.error(.validationMultipleErrors))
-        if let frc {
+    var lastError: Error?
+    fileprivate var managedObjectContext: NSManagedObjectContext?
+    
+    // convience for accessing the fetched objects and removing the optional
+    var fetchedObjects: [ResultType] {
+        fetchedResultsController?.fetchedObjects ?? []
+    }
+    
+    // convience for accessing the sort descriptors
+    var sortDescriptors: [NSSortDescriptor]? {
+        get {
+            fetchedResultsController?.fetchRequest.sortDescriptors
+        }
+        set {
+            fetchedResultsController?.fetchRequest.sortDescriptors = newValue
+        }
+    }
+    
+    // convience for accessing the predicate
+    var predicate: NSPredicate? {
+        get {
+            fetchedResultsController?.fetchRequest.predicate
+        }
+        set {
+            fetchedResultsController?.fetchRequest.predicate = newValue
+        }
+    }
+    
+    func refetch(notify: Bool = true) {
+        if let frc = fetchedResultsController {
             do {
+                lastError = nil
                 try frc.performFetch()
-                result = .success(frc.fetchedObjects ?? [])
             }
             catch {
-                result = .failure(error)
+                lastError = error
+            }
+            if notify {
+                objectWillChange.send()
             }
         }
-        return result
     }
     
     var fetchedResultsController: NSFetchedResultsController<ResultType>? {
         didSet {
             oldValue?.delegate = nil
             fetchedResultsController?.delegate = self
-            
-            // set inital result
-            result = Self.getResult(frc: fetchedResultsController)
-            
-            // setup pipeline for future results when sort or predicate are changed
-            if let frc = fetchedResultsController {
-                let predicateDidChange = frc.publisher(for: \.fetchRequest.predicate)
-                let sortDescriptorsDidChange = frc.publisher(for: \.fetchRequest.sortDescriptors)
- 
-                cancellable = Publishers.CombineLatest(predicateDidChange, sortDescriptorsDidChange)
-                    .dropFirst()
-                    .map { a, b in
-                        Self.getResult(frc: frc)
-                    }
-                    .sink { [weak self] r  in
-                        self?.result = r
-                        self?.objectWillChange.send()
-                    }
-            }
+            refetch(notify: false)
         }
     }
 
-    public func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
-        if let frc = fetchedResultsController {
-            withAnimation {
-                result = .success(frc.fetchedObjects ?? [])
-                objectWillChange.send()
-            }
+    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+        withAnimation {
+            objectWillChange.send()
         }
     }
 }
