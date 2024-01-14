@@ -47,22 +47,26 @@ import Combine
         // if first time or if context has changed
         if fetchResult.fetchedResultsController?.managedObjectContext != viewContext {
             // either nil when first time or get previously updated fetch request
-            var fetchRequest = fetchResult.fetchedResultsController?.fetchRequest
-            if fetchRequest == nil {
-                // allow caller to configure initial fetch request
-                fetchRequest = makeFetchRequest?()
-                if fetchRequest == nil {
-                    // create default fetch request
-                    fetchRequest = NSFetchRequest<ResultType>(entityName: "\(ResultType.self)")
-                    fetchRequest?.sortDescriptors = []
-                }
+            let fetchRequest: NSFetchRequest<ResultType>
+            if let fr = fetchResult.fetchedResultsController?.fetchRequest {
+                fetchRequest = fr
             }
+            else if let fr = makeFetchRequest?() {
+                fetchRequest = fr
+            }
+            else {
+                // create default fetch request
+                fetchRequest = NSFetchRequest<ResultType>(entityName: "\(ResultType.self)")
+                fetchRequest.sortDescriptors = []
+            }
+            //                }
+            //            }
             // allow caller to configure a frc with custom section or cache
-            var frc = makeFetchedResultsController?(fetchRequest!, viewContext)
+            var frc = makeFetchedResultsController?(fetchRequest, viewContext)
             // could check here if its delegate is non-nil and warn it will be lost.
             if frc == nil {
                 // create default frc with most common options
-                frc = NSFetchedResultsController<ResultType>(fetchRequest:fetchRequest!, managedObjectContext: viewContext, sectionNameKeyPath: nil, cacheName: nil)
+                frc = NSFetchedResultsController<ResultType>(fetchRequest:fetchRequest, managedObjectContext: viewContext, sectionNameKeyPath: nil, cacheName: nil)
             }
             fetchResult.fetchedResultsController = frc
         }

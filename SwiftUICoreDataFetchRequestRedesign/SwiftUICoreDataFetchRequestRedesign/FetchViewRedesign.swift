@@ -15,7 +15,7 @@ struct FetchViewRedesign: View {
     
     @FetchRequest2(
 //        makeFetchRequest: {
-//            let fr = Item.fetchRequest()
+//            let fr = NSFetchRequest<Item>()
 //            fr.sortDescriptors = [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)]
 //            return fr
 //        }
@@ -53,10 +53,18 @@ struct FetchViewRedesign: View {
                 }
             }
         }
-        .onChange(of: ascending, initial: true) {
-            _result.fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Item.timestamp, ascending: ascending)]
-            result.invalidate()
+        .onAppear {
+            updateSortDescriptors()
         }
+        .onChange(of: ascending) { // sadly initial true is also called on re-appear.
+            updateSortDescriptors()
+        }
+        
+    }
+    
+    func updateSortDescriptors() {
+        _result.fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Item.timestamp, ascending: ascending)]
+        result.invalidate()
     }
 }
 
