@@ -46,7 +46,7 @@ struct FetchViewRedesign: View {
                 Text(error.localizedDescription)
             }
             else {
-                Table(result.fetchedObjects, sortOrder: sortOrder) {
+                Table(result.fetchedResultsController?.fetchedObjects ?? [], sortOrder: sortOrder) {
                     TableColumn("timestamp", value: \.timestamp) { item in
                         Text(item.timestamp!, format: Date.FormatStyle(date: .numeric, time: .standard))
                     }
@@ -54,8 +54,8 @@ struct FetchViewRedesign: View {
             }
         }
         .onChange(of: ascending, initial: true) {
-            result.sortDescriptors = [NSSortDescriptor(keyPath: \Item.timestamp, ascending: ascending)]
-            result.refetch()
+            _result.fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Item.timestamp, ascending: ascending)]
+            result.invalidate()
         }
     }
 }

@@ -29,8 +29,18 @@ import Combine
     
     public var wrappedValue: FetchResult2<ResultType> {
         get {
-            fetchResult
+            fetchResult.fetchIfNecessary()
+            return fetchResult
         }
+    }
+    
+    var fetchRequest: NSFetchRequest<ResultType> {
+        let r = fetchedResultsController.fetchRequest
+        return r
+    }
+    
+    var fetchedResultsController: NSFetchedResultsController<ResultType> {
+        fetchResult.fetchedResultsController!
     }
     
     func update() {
@@ -49,6 +59,7 @@ import Combine
             }
             // allow caller to configure a frc with custom section or cache
             var frc = makeFetchedResultsController?(fetchRequest!, viewContext)
+            // could check here if its delegate is non-nil and warn it will be lost.
             if frc == nil {
                 // create default frc with most common options
                 frc = NSFetchedResultsController<ResultType>(fetchRequest:fetchRequest!, managedObjectContext: viewContext, sectionNameKeyPath: nil, cacheName: nil)
@@ -61,53 +72,34 @@ import Combine
 class FetchResult2<ResultType>: NSObject, NSFetchedResultsControllerDelegate, ObservableObject where ResultType : NSManagedObject {
 
     var lastError: Error?
-    fileprivate var managedObjectContext: NSManagedObjectContext?
-    
-    // convience for accessing the fetched objects and removing the optional
-    var fetchedObjects: [ResultType] {
-        fetchedResultsController?.fetchedObjects ?? []
+
+    // a new fetch will be performed the next time this wrapped value is accessed.
+    func invalidate(){
+        fetchedResultsController?.delegate = nil // this is used as the invalidation flag.
+        objectWillChange.send()
     }
     
-    // convience for accessing the sort descriptors
-    var sortDescriptors: [NSSortDescriptor]? {
-        get {
-            fetchedResultsController?.fetchRequest.sortDescriptors
+    func fetchIfNecessary() {
+        guard let frc = fetchedResultsController else {
+            return
         }
-        set {
-            fetchedResultsController?.fetchRequest.sortDescriptors = newValue
+        if frc.delegate != nil {
+            return
         }
-    }
-    
-    // convience for accessing the predicate
-    var predicate: NSPredicate? {
-        get {
-            fetchedResultsController?.fetchRequest.predicate
+        frc.delegate = self
+        do {
+            lastError = nil
+            try frc.performFetch()
         }
-        set {
-            fetchedResultsController?.fetchRequest.predicate = newValue
-        }
-    }
-    
-    func refetch(notify: Bool = true) {
-        if let frc = fetchedResultsController {
-            do {
-                lastError = nil
-                try frc.performFetch()
-            }
-            catch {
-                lastError = error
-            }
-            if notify {
-                objectWillChange.send()
-            }
+        catch {
+            lastError = error
         }
     }
     
     var fetchedResultsController: NSFetchedResultsController<ResultType>? {
         didSet {
             oldValue?.delegate = nil
-            fetchedResultsController?.delegate = self
-            refetch(notify: false)
+            fetchedResultsController?.delegate = nil // safety
         }
     }
 
