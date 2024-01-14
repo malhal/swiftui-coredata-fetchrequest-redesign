@@ -9,7 +9,7 @@ import SwiftUI
 
 struct FetchViewOriginal: View {
     @FetchRequest(
-        sortDescriptors: [],
+        sortDescriptors: [SortDescriptor(\.timestamp, order: .reverse)],
         animation: .default)
     private var items: FetchedResults<Item>
     
