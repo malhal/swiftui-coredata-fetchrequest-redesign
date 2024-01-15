@@ -17,18 +17,37 @@ import Combine
     public typealias MakeFetchedResultsControllerClosure = (NSFetchRequest<ResultType>, NSManagedObjectContext) -> NSFetchedResultsController<ResultType>
     
     // For making an initial custom fetch request, this will be reused if the frc is re-init because of context change.
-    private let makeFetchRequest: MakeFetchRequestClosure?
+    private let makeFetchRequest: MakeFetchRequestClosure
     
     // For making a fetch controller, this will be called again if context changes. The fetch request supplied is the previous one which might have been updated after it was created.
-    private let makeFetchedResultsController: MakeFetchedResultsControllerClosure?
+    private let makeFetchedResultsController: MakeFetchedResultsControllerClosure
     
-    init(makeFetchRequest: MakeFetchRequestClosure? = nil, makeFetchedResultsController: MakeFetchedResultsControllerClosure? = nil) {
+    init(makeFetchRequest: @escaping MakeFetchRequestClosure = {
+        // create default fetch request
+        let fr = NSFetchRequest<ResultType>(entityName: "\(ResultType.self)")
+        fr.sortDescriptors = []
+        return fr
+    }, makeFetchedResultsController: @escaping MakeFetchedResultsControllerClosure = { fetchRequest, viewContext in
+        // create default frc with most common options
+        NSFetchedResultsController<ResultType>(fetchRequest:fetchRequest, managedObjectContext: viewContext, sectionNameKeyPath: nil, cacheName: nil)
+    }) {
         self.makeFetchRequest = makeFetchRequest
         self.makeFetchedResultsController = makeFetchedResultsController
     }
     
     public var wrappedValue: FetchResult2<ResultType> {
         get {
+            if fetchResult.fetchedResultsController?.managedObjectContext != viewContext {
+                // either nil when first time or get previously updated fetch request
+                let fr = fetchResult.fetchedResultsController?.fetchRequest ?? makeFetchRequest()
+   
+                // allow caller to configure a frc with custom section or cache
+                let frc = makeFetchedResultsController(fr, viewContext)
+                // could check here if its delegate is non-nil and warn it will be lost.
+                
+                fetchResult.fetchedResultsController = frc
+            }
+            
             fetchResult.fetchIfNecessary()
             return fetchResult
         }
@@ -43,34 +62,6 @@ import Combine
         fetchResult.fetchedResultsController!
     }
     
-    func update() {
-        // if first time or if context has changed
-        if fetchResult.fetchedResultsController?.managedObjectContext != viewContext {
-            // either nil when first time or get previously updated fetch request
-            let fetchRequest: NSFetchRequest<ResultType>
-            if let fr = fetchResult.fetchedResultsController?.fetchRequest {
-                fetchRequest = fr
-            }
-            else if let fr = makeFetchRequest?() {
-                fetchRequest = fr
-            }
-            else {
-                // create default fetch request
-                fetchRequest = NSFetchRequest<ResultType>(entityName: "\(ResultType.self)")
-                fetchRequest.sortDescriptors = []
-            }
-            //                }
-            //            }
-            // allow caller to configure a frc with custom section or cache
-            var frc = makeFetchedResultsController?(fetchRequest, viewContext)
-            // could check here if its delegate is non-nil and warn it will be lost.
-            if frc == nil {
-                // create default frc with most common options
-                frc = NSFetchedResultsController<ResultType>(fetchRequest:fetchRequest, managedObjectContext: viewContext, sectionNameKeyPath: nil, cacheName: nil)
-            }
-            fetchResult.fetchedResultsController = frc
-        }
-    }
 }
 
 class FetchResult2<ResultType>: NSObject, NSFetchedResultsControllerDelegate, ObservableObject where ResultType : NSManagedObject {

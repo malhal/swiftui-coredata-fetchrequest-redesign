@@ -13,12 +13,13 @@ struct FetchViewRedesign: View {
     // source of truth for the sort can easily be persisted
     //@AppStorage("Config") private var ascending = false
     
+
     @FetchRequest2(
-//        makeFetchRequest: {
-//            let fr = NSFetchRequest<Item>()
-//            fr.sortDescriptors = [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)]
-//            return fr
-//        }
+        makeFetchRequest: {
+            let fr = Item.fetchRequest()
+            fr.sortDescriptors = [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)]
+            return fr
+        }
 //        makeFetchedResultsController: { fr, context in
 //            let frc = NSFetchedResultsController(fetchRequest: fr, managedObjectContext: context, sectionNameKeyPath: nil, cacheName: nil)
 //            return frc
